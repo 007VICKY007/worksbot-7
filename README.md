@@ -1,4 +1,4 @@
-# Conversational RAG PDF Question-Answering Chatbot
+# 🤖 RAG PDF Question-Answering Chatbot
 
 An enterprise-grade **Retrieval-Augmented Generation (RAG)** PDF Question-Answering Chatbot built using **Python, Streamlit, LangChain (v1.x LCEL), OpenAI API, and ChromaDB**.
 
@@ -133,3 +133,20 @@ python3 -m streamlit run app.py
 
 Access the application in your browser at:
 👉 **`http://localhost:8501`**
+
+---
+
+## 💡 How to Use
+
+1. **Upload Document**: In the sidebar, select one or multiple PDF documents.
+2. **Process Document**: Click **⚡ Process PDF & Build Pipeline**. The app will extract, chunk, embed, and index your document.
+3. **Ask Questions**: Type your question in the chat input box at the bottom.
+4. **Inspect Sources**: Expand the **📚 View Retrieved Sources** section under any answer to see exact page numbers and retrieved document snippets.
+5. **Reset / New Document**: Click **🔄 Upload New Document** in the sidebar anytime to wipe the index and upload fresh documents.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
+# worksbot-7
