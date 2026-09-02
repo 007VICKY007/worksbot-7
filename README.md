@@ -1,4 +1,4 @@
-# 🤖 RAG PDF Question-Answering Chatbot
+# RAG PDF Question-Answering Chatbot
 
 An enterprise-grade **Retrieval-Augmented Generation (RAG)** PDF Question-Answering Chatbot built using **Python, Streamlit, LangChain (v1.x LCEL), OpenAI API, and ChromaDB**.
 
