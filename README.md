@@ -158,7 +158,5 @@ Once started, open your web browser at:
 
 ---
 
-## 📄 License
 
-This project is licensed under the MIT License.
 # worksbot-7
