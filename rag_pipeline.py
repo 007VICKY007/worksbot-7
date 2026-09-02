@@ -6,8 +6,12 @@ import chromadb
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
+
+try:
+    from langchain_chroma import Chroma
+except ImportError:
+    from langchain_community.vectorstores import Chroma
 
 from config import (
     UPLOAD_DIR,
@@ -190,7 +194,12 @@ class RAGPipeline:
             formatted.append(f"{role}: {msg.get('content', '')}")
         return "\n".join(formatted)
 
-    def query(self, question: str, chat_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def query(
+        self,
+        question: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """Execute history-aware retrieval and generate conversational response."""
         if not self.retriever or not self.rag_chain:
             return {
