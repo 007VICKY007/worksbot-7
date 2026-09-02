@@ -238,8 +238,7 @@ First embed takes time, but questions 2+ are instant.
 **Need help?**  
 Check the `.env.example` file and make sure your setup matches.
 
-
 ---
 
 **Happy document chatting!**  
-Your PDFs just got a lot smarter. 
+Your PDFs just got a lot smarter.
