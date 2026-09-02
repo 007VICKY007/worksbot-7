@@ -1,5 +1,4 @@
 import os
-import shutil
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import chromadb
@@ -20,11 +19,11 @@ from config import (
     DEFAULT_TEMPERATURE,
     DEFAULT_TOP_K,
 )
-from prompt_templates import get_humanized_prompt
+from prompt_templates import get_reformulate_prompt, get_conversational_rag_prompt
 
 
 class RAGPipeline:
-    """End-to-End Modular RAG Pipeline with ChromaDB PersistentClient & OpenAI LCEL."""
+    """Conversational RAG Pipeline with Chat History Reformulation & Vector Search."""
 
     def __init__(
         self,
@@ -48,6 +47,7 @@ class RAGPipeline:
         self.chunks = []
         self.vector_store = None
         self.retriever = None
+        self.reformulate_chain = None
         self.rag_chain = None
 
     def load_documents(self) -> List:
@@ -104,10 +104,8 @@ class RAGPipeline:
             api_key=self.api_key
         )
 
-        # Initialize Chromadb PersistentClient safely
         client = chromadb.PersistentClient(path=str(self.persist_directory))
 
-        # Reset collection cleanly via API to avoid SQLite file lock errors
         collection_name = "pdf_rag"
         try:
             client.delete_collection(collection_name)
@@ -120,7 +118,7 @@ class RAGPipeline:
             embedding_function=embeddings
         )
 
-        # Batch insert chunks to safely handle large PDFs (e.g. 100+ pages)
+        # Batch insert chunks to safely handle large PDFs
         batch_size = 100
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
@@ -138,8 +136,8 @@ class RAGPipeline:
             search_kwargs={"k": self.top_k}
         )
 
-    def create_qa_chain(self):
-        """Step 5: Construct humanized LCEL Runnable QA chain with OpenAI LLM."""
+    def create_qa_chains(self):
+        """Step 5: Construct LCEL question reformulation chain and conversational RAG chain."""
         if not self.api_key:
             raise ValueError("OpenAI API Key is missing.")
 
@@ -149,14 +147,27 @@ class RAGPipeline:
             api_key=self.api_key
         )
 
-        prompt = get_humanized_prompt()
+        # Reformulation chain for follow-up questions
+        reformulate_prompt = get_reformulate_prompt()
+        self.reformulate_chain = (
+            reformulate_prompt
+            | llm
+            | StrOutputParser()
+        )
+
+        # Conversational RAG chain
+        conversational_prompt = get_conversational_rag_prompt()
 
         def format_docs(docs: List) -> str:
             return "\n\n".join(doc.page_content for doc in docs)
 
         self.rag_chain = (
-            {"context": lambda x: format_docs(x["docs"]), "question": lambda x: x["question"]}
-            | prompt
+            {
+                "chat_history": lambda x: x["chat_history"],
+                "context": lambda x: format_docs(x["docs"]),
+                "question": lambda x: x["question"]
+            }
+            | conversational_prompt
             | llm
             | StrOutputParser()
         )
@@ -167,10 +178,20 @@ class RAGPipeline:
         self.chunks = self.chunk_documents(self.documents)
         self.vector_store = self.create_vector_store(self.chunks)
         self.setup_retriever()
-        self.create_qa_chain()
+        self.create_qa_chains()
 
-    def query(self, question: str) -> Dict[str, Any]:
-        """Execute similarity search and generate humanized response."""
+    def _format_history(self, chat_history: List[Dict[str, Any]]) -> str:
+        """Format session chat history into a clean string for the LLM."""
+        if not chat_history:
+            return "No prior conversation history."
+        formatted = []
+        for msg in chat_history:
+            role = "User" if msg.get("role") == "user" else "Assistant"
+            formatted.append(f"{role}: {msg.get('content', '')}")
+        return "\n".join(formatted)
+
+    def query(self, question: str, chat_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Execute history-aware retrieval and generate conversational response."""
         if not self.retriever or not self.rag_chain:
             return {
                 "answer": "The RAG Pipeline is not initialized yet. Please upload a PDF and process it.",
@@ -181,8 +202,25 @@ class RAGPipeline:
         if not question:
             return {"answer": "Please provide a valid question.", "source_documents": []}
 
-        # Step 1: Retrieve context chunks
-        docs = self.retriever.invoke(question)
+        if chat_history is None:
+            chat_history = []
+
+        formatted_history = self._format_history(chat_history)
+
+        # Step 1: Reformulate follow-up questions using chat history if present
+        if chat_history:
+            try:
+                search_query = self.reformulate_chain.invoke({
+                    "chat_history": formatted_history,
+                    "question": question
+                }).strip()
+            except Exception:
+                search_query = question
+        else:
+            search_query = question
+
+        # Step 2: Retrieve context chunks using standalone search query
+        docs = self.retriever.invoke(search_query)
 
         if not docs:
             return {
@@ -190,10 +228,15 @@ class RAGPipeline:
                 "source_documents": []
             }
 
-        # Step 2: Generate response from LLM using LCEL chain
-        humanized_answer = self.rag_chain.invoke({"docs": docs, "question": question})
+        # Step 3: Generate conversational answer using chat history, context docs, and question
+        humanized_answer = self.rag_chain.invoke({
+            "chat_history": formatted_history,
+            "docs": docs,
+            "question": question
+        })
 
         return {
             "answer": humanized_answer,
-            "source_documents": docs
+            "source_documents": docs,
+            "search_query": search_query
         }
